@@ -1,4 +1,5 @@
 from zipfile import ZipFile
+import shutil
 # from PIL import Image
 import PIL.Image
 import os, getpass
@@ -6,6 +7,7 @@ import tkinter as tk
 from tkinter import *
 from tkinter import filedialog
 from tkinter import messagebox
+import tkinter.ttk as ttk
 
 class SampleApp(tk.Tk):
 
@@ -107,6 +109,8 @@ class FileSelectionPage(tk.Frame):
                                 command=self.clearFiles)
         file_button.grid(row=1, column=0, pady = 10)
 
+        progressBar = ttk.Progressbar(self, orient="horizontal", mode="determinate", maximum=100, value=0)
+
         # TODO: update redirect button
         # next_button = tk.Button(self, text="Next",
         #                         command=lambda: controller.show_frame("CodePage"))
@@ -120,29 +124,52 @@ class FileSelectionPage(tk.Frame):
         f2.grid(row=1, column=2, padx = 10, sticky = "e")
         f3.grid(row=1, column=1, sticky = "nsew")
 
-        label = tk.Label(self, text="")
+        #label = tk.Label(self, text="")
         #label.pack
 
     def fileHandler(self):
         fileSize = 0
         fileList = [[]]
-
+        self.controller.destFile = ''
+        oversizedFiles = []
+        progress = 0
+        progressVar = DoubleVar()
+        
         # Get destination folder
         user = getpass.getuser().lower()
         self.controller.destFile = filedialog.askdirectory(initialdir='C:/Users/' + user)
+
+        # Error handling
+        if not self.controller.files:
+            messagebox.showwarning(title="No files selected", message="No files selected! Please select file(s) or folder and then select compress and zip")
+            return
         if (self.controller.destFile == ''):
+            # messagebox.showwarning(title="File selection error", message="Select a destination file for compressed images and zip files.")
             return
         print("Output folder = " + self.controller.destFile)
 
         filesToBeZipped = compressFiles(self)
         
+        popup = Toplevel()
+        Label(popup, text="Files being zipped").grid(row=0,column=0,sticky= "nsew")
+        progressBar = ttk.Progressbar(popup, orient="horizontal", variable=progressVar, mode="determinate", maximum=100, value=0)
+        progressBar.grid(row=1, column=0)
+        popup.pack_slaves()
+        progressBar.start()
+        
         count = 0
         outerCount = 0
+        progressStep = float(100.0/len(filesToBeZipped))
         for item in filesToBeZipped:
+            popup.update()
+            progress += progressStep
+            progressVar.set(progress)
             itemSize = os.path.getsize(item)
-            if itemSize > 25000000:
-                    print("File is too large!")
-                    return
+            # Check if compressed file is less than 25mb(26,214,000 bytes)
+            if itemSize > 26000000:
+                    print(item + " is too large!")
+                    oversizedFiles.append(item)
+                    continue
             fileSize = fileSize + itemSize
             print("filesize = " + str(fileSize) + " file = " + item)
             # Max zip file of 25mb
@@ -158,7 +185,18 @@ class FileSelectionPage(tk.Frame):
                     for file in fileList[i]:
                         zip.write(file, os.path.basename(file))
 
-   
+        # Completion messages
+        progressBar.stop()
+        popup.destroy()
+        if oversizedFiles:
+            messagebox.showwarning(title="Oversized files", message="The following files where too large to zip: " + str(oversizedFiles))
+        else:
+            messagebox.showinfo(title="Complete", message="Images successfully compressed and zipped!")
+
+        self.clearFiles()
+        print("Compression and zipping Complete!")
+        return
+
     # Select individual files to be sorted
     def addFiles(self):
         print(self.controller.quality)
@@ -222,36 +260,58 @@ class FileSelectionPage(tk.Frame):
         except:
             print("Error removing file from files list")
 
+    
 class CodePage(tk.Frame):
     def __init__(self, parent, controller):
         tk.Frame.__init__(self, parent, width=450, height=50, pady=3)
         self.controller = controller
 
-def compressFiles(self, verbose = False):
+# Compress files, returning array of files
+def compressFiles(self):
     compressedFiles = []
     count = 0
+
+    progress = 0
+    progressVar = DoubleVar()
+    popup = Toplevel()
+    Label(popup, text="Files being compressed").grid(row=0,column=0,sticky= "nsew")
+    progressBar = ttk.Progressbar(popup, orient="horizontal", variable=progressVar, mode="determinate", maximum=100, value=0)
+    progressBar.grid(row=1, column=0)
+    popup.pack_slaves()
+    progressBar.start()
+    progressStep = float(100.0/len(self.controller.files))
     for img in self.controller.files:
+        popup.update()
+        progress += progressStep
+        progressVar.set(progress)
         if os.path.splitext(img)[1].lower() in self.controller.formats:
             print('compressing', img)
             picture = PIL.Image.open(img)
-            path = self.controller.destFile + "/Compressed_"+ str(count) +".jpg"
+            path = self.controller.destFile + "/Compressed_"+ str(count) + ".jpg"
             picture.save(path, 
-                 "JPEG", 
-                 optimize = True, 
-                 quality = 25)
+                "JPEG", 
+                optimize = True, 
+                quality = 25)
             compressedFiles.append(path)
             count = count + 1
-    return compressedFiles
-  
-    #TODO: helper functions DELETE
-    def printfiles(self):
-        for img in self.controller.files:
-            print(img)
+        else:
+            #TODO: Find better way to handle other file types (ex. mov)
+            print('skipping ', img)
+            path = self.controller.destFile + "/Compressed_"+ str(count) + os.path.splitext(img)[1].lower()
+            compressedFiles.append(path)
+            shutil.copy(img, path)
+            count = count + 1
+    progressVar.set(100)
+    progressBar.stop()
+    popup.destroy()
+    return compressedFiles 
 
+#TODO: helper functions DELETE
+def printfiles(self):
+    for img in self.controller.files:
+        print(img)
 
 
 if __name__ == "__main__":
     app = SampleApp()
     app.mainloop()
-
-    
