@@ -8,6 +8,7 @@ from tkinter import *
 from tkinter import filedialog
 from tkinter import messagebox
 import tkinter.ttk as ttk
+from tkinter import font as tkFont
 
 class SampleApp(tk.Tk):
 
@@ -15,7 +16,7 @@ class SampleApp(tk.Tk):
         tk.Tk.__init__(self)
 
         self.files = []
-        self.destFile = ""
+        #self.destFile = ""
         self.script = ""
         self.destFlag = False
         self.formats = ('.jpg', '.jpeg')
@@ -29,7 +30,7 @@ class SampleApp(tk.Tk):
         container.winfo_toplevel().title("Denteon Zip")
 
         self.frames = {}
-        for F in (FileSelectionPage, CodePage):
+        for F in (FileSelectionPage, OtherPage):
             page_name = F.__name__
             frame = F(parent=container, controller=self)
             self.frames[page_name] = frame
@@ -55,262 +56,260 @@ class SampleApp(tk.Tk):
         y = (frame.winfo_screenheight() - frame.winfo_reqheight()) / 3
         self.geometry("+{}+{}".format(int(x), int(y)))
 
-# Frame for selecting files to be sorted
 class FileSelectionPage(tk.Frame):
-
     def __init__(self, parent, controller):
         tk.Frame.__init__(self, parent)
         self.controller = controller
 
-        f1 = tk.Frame(self)
-        f2 = tk.Frame(self)
-        f3 = tk.Frame(self)
+        def fileHandler():
+            fileSize = 0
+            fileList = [[]]
+            oversizedFiles = []
+            progress = 0
+            destination = destination_var.get()
+            compression_quality = quality_var.get()
+            quality = int(compression_quality)
 
-        self.grid_rowconfigure(0, weight=0)
-        self.grid_rowconfigure(1, weight=1)
-        self.grid_rowconfigure(2, weight=0)
-        
-        self.grid_columnconfigure(0, weight=0)
-        self.grid_columnconfigure(1, weight=1)
-        self.grid_columnconfigure(2, weight=0)
+            # Error handling
+            if not self.controller.files:
+                messagebox.showwarning(title="No Files Selected", message="No files selected! Please select file(s) or folder and then select compress and zip")
+                return
+            if (destination == ''):
+                messagebox.showwarning(title="Missing Destination Folder", message="Select a destination file to continue")
+                return
+            if quality < 0 or quality > 100:
+                messagebox.showwarning(title="Incorrect Quality Setting", message="Quality must be set between 0 to 100. Default is 25.")
+                return
+            print("Output folder = " + destination)
+            print("Compression Quality = " + str(compression_quality))
 
-        f3.grid_rowconfigure(0, weight=1)
+            # Compress files
+            filesToBeZipped = compressFiles(destination, compression_quality)
 
-        f3.grid_columnconfigure(0, weight=1)
+            # Start zipping progress bar and label
+            zip_label = ttk.Label(self, text="Files being zipped")
+            zip_label.grid(row=4,column=3,sticky= "nsew")
+            progress_bar.start()
+            progressStep = float(100.0/len(filesToBeZipped))
 
+            count = 0
+            outerCount = 0
+            # Zipping logic loop
+            for item in filesToBeZipped:
+                # progress bar step up
+                progress += progressStep
+                progressVar.set(progress)
+                progress_bar.update_idletasks()
+                itemSize = os.path.getsize(item)
+                # Check if compressed file is less than 25mb(26,214,000 bytes)
+                if itemSize > 26000000:
+                        print(item + " is too large!")
+                        oversizedFiles.append(item)
+                        continue
+                fileSize = fileSize + itemSize
+                print("filesize = " + str(fileSize) + " file = " + item)
+                # Max zip file of 25mb
+                if fileSize > 25000000:
+                    outerCount+=1
+                    fileSize = itemSize
+                    fileList.append([])
+                fileList[outerCount].append(item)
 
-        label = tk.Label(self, text="Select files to be sorted")
-        label.grid(row=0, column=1, sticky = "s")
+            # Zip files
+            for i in range(len(fileList)):
+                with ZipFile(destination + '/compressedImages_' + str(i) + '.zip','w') as zip:
+                        # writing each file one by one
+                        for file in fileList[i]:
+                            zip.write(file, os.path.basename(file))
 
-        # Add multiselected delete: add back (selectmode="multiple",)
-        self.selected_list = tk.Listbox(f3, bg='#ffffff', width = 100, height = 30)
-        self.selected_list.grid(row = 0, column = 0, sticky= "nsew")
+            progressVar.set(0)
+            progress_bar.stop()
+            progress_bar.update_idletasks()
+            zip_label.destroy()
 
-        file_button = tk.Button(f1, text="Select File(s)",
-                                command=self.addFiles)
-        file_button.grid(row=0, column=0, pady = 10)
+            # Completion popup messages
+            if oversizedFiles:
+                messagebox.showwarning(title="Oversized files", message="The following files where too large to zip: " + str(oversizedFiles))
+            else:
+                messagebox.showinfo(title="Complete", message="Images successfully compressed and zipped!")
 
-        file_button = tk.Button(f1, text="Select Folder",
-                                command=self.addFolders)
-        file_button.grid(row=1, column=0, pady = 10)
-
-        # TODO: Add extra input fields, figure out how to display values
-        #       and event handler for updating values
-        # quality_label = tk.Label(self, text="quality 0 - 100")
-        # quality_label.grid(row=2, column=0, pady = 10)
-        # quality_entry = tk.Entry(f1, textvariable=self.controller.quality)
-        # quality_entry.grid(row=2, column=0, pady = 10)
-
-        file_button = tk.Button(f2, text="Remove Selected",
-                                command=self.removeFile)
-        file_button.grid(row=0, column=0, pady = 10)
-
-        file_button = tk.Button(f2, text="Clear List",
-                                command=self.clearFiles)
-        file_button.grid(row=1, column=0, pady = 10)
-
-        progressBar = ttk.Progressbar(self, orient="horizontal", mode="determinate", maximum=100, value=0)
-
-        # TODO: update redirect button
-        # next_button = tk.Button(self, text="Next",
-        #                         command=lambda: controller.show_frame("CodePage"))
-        # next_button.grid(row=2, column=1, pady = 10)
-
-        next_button = tk.Button(self, text="compress and zip",
-                                command=self.fileHandler)
-        next_button.grid(row=2, column=1, pady = 10)
-
-        f1.grid(row=1, column=0, padx = 10)
-        f2.grid(row=1, column=2, padx = 10, sticky = "e")
-        f3.grid(row=1, column=1, sticky = "nsew")
-
-        #label = tk.Label(self, text="")
-        #label.pack
-
-    def fileHandler(self):
-        fileSize = 0
-        fileList = [[]]
-        self.controller.destFile = ''
-        oversizedFiles = []
-        progress = 0
-        progressVar = DoubleVar()
-        
-        # Get destination folder
-        user = getpass.getuser().lower()
-        self.controller.destFile = filedialog.askdirectory(initialdir='C:/Users/' + user)
-
-        # Error handling
-        if not self.controller.files:
-            messagebox.showwarning(title="No files selected", message="No files selected! Please select file(s) or folder and then select compress and zip")
+            clearFiles()
+            print("Compression and zipping Complete!")
             return
-        if (self.controller.destFile == ''):
-            # messagebox.showwarning(title="File selection error", message="Select a destination file for compressed images and zip files.")
-            return
-        print("Output folder = " + self.controller.destFile)
 
-        filesToBeZipped = compressFiles(self)
-        
-        popup = Toplevel()
-        Label(popup, text="Files being zipped").grid(row=0,column=0,sticky= "nsew")
-        progressBar = ttk.Progressbar(popup, orient="horizontal", variable=progressVar, mode="determinate", maximum=100, value=0)
-        progressBar.grid(row=1, column=0)
-        popup.pack_slaves()
-        progressBar.start()
-        
-        count = 0
-        outerCount = 0
-        progressStep = float(100.0/len(filesToBeZipped))
-        for item in filesToBeZipped:
-            popup.update()
-            progress += progressStep
-            progressVar.set(progress)
-            itemSize = os.path.getsize(item)
-            # Check if compressed file is less than 25mb(26,214,000 bytes)
-            if itemSize > 26000000:
-                    print(item + " is too large!")
-                    oversizedFiles.append(item)
-                    continue
-            fileSize = fileSize + itemSize
-            print("filesize = " + str(fileSize) + " file = " + item)
-            # Max zip file of 25mb
-            if fileSize > 25000000:
-                outerCount+=1
-                fileSize = itemSize
-                fileList.append([])
-            fileList[outerCount].append(item)
+        def compressFiles(destination, qual):
+            compressedFiles = []
+            count = 0
+            progress = 0
+            compress_label = ttk.Label(self, text="Files being compressed")
+            compress_label.grid(row=4,column=3,sticky= "nsew")
+            progressStep = float(100.0/len(self.controller.files))
 
-        for i in range(len(fileList)):
-            with ZipFile(self.controller.destFile + '/compressedImagesTest_' + str(i) + '.zip','w') as zip:
-                    # writing each file one by one
-                    for file in fileList[i]:
-                        zip.write(file, os.path.basename(file))
+            # compress jpeg files, skip all other formats
+            for img in self.controller.files:
+                progress += progressStep
+                progressVar.set(progress)
+                progress_bar.update_idletasks()
+                if os.path.splitext(img)[1].lower() in self.controller.formats:
+                    print('compressing', img)
+                    picture = PIL.Image.open(img)
+                    path = destination + "/Compressed_"+ str(count) + ".jpg"
+                    picture.save(path, "JPEG", optimize = True, quality = qual)
+                    compressedFiles.append(path)
+                    count = count + 1
+                else:
+                    #TODO: Find better way to handle other file types (ex. mov)
+                    print('skipping ', img)
+                    path = destination + "/Compressed_"+ str(count) + os.path.splitext(img)[1].lower()
+                    compressedFiles.append(path)
+                    shutil.copy(img, path)
+                    count = count + 1
+            progressVar.set(100)
+            progress_bar.update_idletasks()
+            compress_label.destroy()
+            return compressedFiles 
 
-        # Completion messages
-        progressBar.stop()
-        popup.destroy()
-        if oversizedFiles:
-            messagebox.showwarning(title="Oversized files", message="The following files where too large to zip: " + str(oversizedFiles))
-        else:
-            messagebox.showinfo(title="Complete", message="Images successfully compressed and zipped!")
-
-        self.clearFiles()
-        print("Compression and zipping Complete!")
-        return
-
-    # Select individual files to be sorted
-    def addFiles(self):
-        print(self.controller.quality)
-        user = getpass.getuser()
-        filelist = tk.filedialog.askopenfilename(initialdir='C:/Users/%s' % user, multiple=True)
-        for filename in filelist:
-            if filename not in self.controller.files:
-                try:
-                    self.selected_list.insert('end', (filename))
-                    self.controller.files.append(filename)
-                except:
-                    print("could not add: " + filename)
-
-    # Select folders to be sorted
-    def addFolders(self):
-        user = getpass.getuser().lower()
-        folder = filedialog.askdirectory(initialdir='C:/Users/' + user)
-        if (folder == ''):
-            return
-        # confirm = messagebox.askyesno('Confirm', 'Are you sure you want to sort from: ' + folder + '?')
-        # if not confirm:
-        #     return
-        self.addFolder(folder)
-
-    # add folder to list calls self recursively for sub folders
-    def addFolder(self, folder):
-        try:
-            filelist = os.scandir(folder)
-        except:
-            messagebox.showwarning("Access Denied", "Can't Access " + folder)
-            return
-        for filename in filelist:
-            if os.path.isfile(folder + '/' + filename.name):
+        def selectFiles():
+            user = getpass.getuser()
+            filelist = tk.filedialog.askopenfilename(initialdir='C:/Users/%s' %user, multiple=True)
+            for filename in filelist:
                 if filename not in self.controller.files:
                     try:
-                        self.selected_list.insert('end', (folder + '/' + filename.name))
-                        self.controller.files.append(folder + '/' + filename.name)
+                        selected_list.insert('end', (filename))
+                        self.controller.files.append(filename)
                     except:
-                        print("could not add: " + folder + '/' + filename.name)
-            elif os.path.isdir(folder + '/' + filename.name):
-                self.addFolder(folder + '/' + filename.name)
+                        print("could not add: " + filename)
 
-    # Remove selected files
-    def removeFile(self):
-        selected = self.selected_list.curselection()
-        try:
-            value = self.selected_list.get(selected[0])
-        except:
-            print("No file is selected")
-            return
-        try:
-            self.selected_list.delete(selected[0])
-            self.controller.files.remove(value)
-        except:
-            print("Error removing file from files list")
+        def selectFolders():
+            user = getpass.getuser().lower()
+            folder = filedialog.askdirectory(initialdir='C:/Users/%s' %user)
+            if (folder == ''):
+                return
+            addFolder(folder)
 
-    def clearFiles(self):
-        self.controller.files.clear()
-        try:
-            self.selected_list.delete(0,'end')
-        except:
-            print("Error removing file from files list")
+        def addFolder(folder):
+            try:
+                filelist = os.scandir(folder)
+            except:
+                messagebox.showwarning("Access Denied", "Can't Access " + folder)
+                return
+            for filename in filelist:
+                absolute_filename = folder + '/' + filename.name
+                if os.path.isfile(absolute_filename):
+                    if absolute_filename not in self.controller.files:
+                        try:
+                            selected_list.insert('end', absolute_filename)
+                            self.controller.files.append(absolute_filename)
+                        except:
+                            print("could not add: " + absolute_filename)
+                elif os.path.isdir(absolute_filename):
+                    # TODO: Do I want this to be recursive, optional with selector?
+                    # addFolder(absolute_filename)
+                    continue
 
-    
-class CodePage(tk.Frame):
+        def removeFile():
+            selected = selected_list.curselection()
+            try:
+                value = selected_list.get(selected[0])
+            except:
+                print("No file is selected")
+                return
+            try:
+                selected_list.delete(selected[0])
+                self.controller.files.remove(value)
+            except:
+                print("Error removing file from files list")
+
+        def clearFiles():
+            self.controller.files.clear()
+            try:
+                selected_list.delete(0,'end')
+            except:
+                print("Error removing file from files list")
+
+        def selectDestination():
+            user = getpass.getuser().lower()
+            folder = filedialog.askdirectory(initialdir='C:/Users/' + user)
+            if (folder == ''):
+                return
+            destination_var.set(folder)
+
+        # Fonts
+        helv36 = tkFont.Font(family='Helvetica', size=18, weight='bold')
+
+        # Variables
+        quality_var = IntVar(self, value="25")
+        progressVar = DoubleVar()
+        destination_var = StringVar(self, value="")
+
+        # Frames
+        manage_frame = ttk.Frame(self, borderwidth=5, relief="ridge")
+        entry_frame = ttk.Frame(self, borderwidth=5, relief="ridge")
+
+        # Listbox
+        selected_list = tk.Listbox(self, bg='#ffffff', width = 100, height = 30)
+        
+        # Buttons
+        file_button = ttk.Button(manage_frame, text="Select File(s)", command=lambda: selectFiles())
+        folder_button = ttk.Button(manage_frame, text="Select Folder", command=lambda: selectFolders())
+        remove_button = ttk.Button(manage_frame, text="Remove Selected", command=lambda: removeFile())
+        clear_button = ttk.Button(manage_frame, text="Clear List", command=lambda: clearFiles())
+        destination_button = ttk.Button(entry_frame, text="select", command=lambda: selectDestination())
+        process_button = tk.Button(self, text="compress and zip", command=lambda: fileHandler(), font=helv36)
+
+        # Entry
+        destination_entry = tk.Entry(entry_frame, textvariable=destination_var, state="readonly")
+        quality_entry = tk.Entry(entry_frame, textvariable=quality_var, justify="center")
+
+        # Labels
+        selected_label = ttk.Label(self, text="Selected files:")
+        manage_label = ttk.Label(self, text="Manage files:")
+        destination_label = ttk.Label(entry_frame, text="Destination:")
+        quality_label = ttk.Label(entry_frame, text="Quality (0-100):")
+
+        # Progress bar
+        progress_bar = ttk.Progressbar(self, orient="horizontal", variable=progressVar, mode="determinate", maximum=100, value=0)
+
+        # Grid layout
+        self.grid(padx=5, pady=(2,0))
+
+        selected_label.grid(row=0, column=0, sticky="w")
+        selected_list.grid(row=1, column=0, rowspan=3, columnspan=3, sticky="nsew")
+        manage_label.grid(row=0, column=3, pady=0)
+
+        manage_frame.grid(row=1, column=3, pady=0, sticky="new")
+        file_button.grid(row=0, column=0, padx=0, pady=5, sticky="ew")
+        folder_button.grid(row=1, column=0, padx=0, pady=5, sticky="ew")
+        remove_button.grid(row=2, column=0, padx=0, pady=(5,5), sticky="ew")
+        clear_button.grid(row=3, column=0, padx=0, pady=5, sticky="ew")
+
+        entry_frame.grid(row=2, column=3, pady=0, sticky="new")
+        destination_label.grid(row=0, column=0, padx=0, pady=0, sticky="w")
+        destination_entry.grid(row=1, column=0, padx=0, pady=0, columnspan=2, sticky="ew")
+        destination_button.grid(row=2, column=0, padx=0, pady=0, sticky="w")
+        quality_label.grid(row=4, column=0, padx=0, pady=(30,0), sticky="w")
+        quality_entry.grid(row=4, column=1, padx=0, pady=(30,0))
+
+        process_button.grid(row=3, column=3, pady=(10,0))
+
+        progress_bar.grid(row=4, column=0, columnspan=3, pady=5, sticky="ew")
+
+        # configure
+        self.columnconfigure(0, weight=2)
+        self.rowconfigure(1, weight=1)
+        self.rowconfigure(2, weight=1)
+        self.columnconfigure(3, weight=1)
+        self.rowconfigure(3, weight=1)
+        manage_frame.columnconfigure(0, weight=1)
+        manage_frame.rowconfigure(0, weight=1)
+        entry_frame.columnconfigure(1, weight=1)
+        entry_frame.rowconfigure(0, weight=1)
+
+#TODO: remove or add to project
+class OtherPage(tk.Frame):
     def __init__(self, parent, controller):
         tk.Frame.__init__(self, parent, width=450, height=50, pady=3)
         self.controller = controller
-
-# Compress files, returning array of files
-def compressFiles(self):
-    compressedFiles = []
-    count = 0
-
-    progress = 0
-    progressVar = DoubleVar()
-    popup = Toplevel()
-    Label(popup, text="Files being compressed").grid(row=0,column=0,sticky= "nsew")
-    progressBar = ttk.Progressbar(popup, orient="horizontal", variable=progressVar, mode="determinate", maximum=100, value=0)
-    progressBar.grid(row=1, column=0)
-    popup.pack_slaves()
-    progressBar.start()
-    progressStep = float(100.0/len(self.controller.files))
-    for img in self.controller.files:
-        popup.update()
-        progress += progressStep
-        progressVar.set(progress)
-        if os.path.splitext(img)[1].lower() in self.controller.formats:
-            print('compressing', img)
-            picture = PIL.Image.open(img)
-            path = self.controller.destFile + "/Compressed_"+ str(count) + ".jpg"
-            picture.save(path, 
-                "JPEG", 
-                optimize = True, 
-                quality = 25)
-            compressedFiles.append(path)
-            count = count + 1
-        else:
-            #TODO: Find better way to handle other file types (ex. mov)
-            print('skipping ', img)
-            path = self.controller.destFile + "/Compressed_"+ str(count) + os.path.splitext(img)[1].lower()
-            compressedFiles.append(path)
-            shutil.copy(img, path)
-            count = count + 1
-    progressVar.set(100)
-    progressBar.stop()
-    popup.destroy()
-    return compressedFiles 
-
-#TODO: helper functions DELETE
-def printfiles(self):
-    for img in self.controller.files:
-        print(img)
-
 
 if __name__ == "__main__":
     app = SampleApp()
