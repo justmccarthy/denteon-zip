@@ -66,25 +66,29 @@ class FileSelectionPage(tk.Frame):
             fileList = [[]]
             oversizedFiles = []
             progress = 0
-            destination = destination_var.get()
+            destination = destination_var.get().replace("\\", "/")
             compression_quality = quality_var.get()
+            outputName = outputNamingVar.get()
             quality = int(compression_quality)
 
             # Error handling
             if not self.controller.files:
-                messagebox.showwarning(title="No Files Selected", message="No files selected! Please select file(s) or folder and then select compress and zip")
+                messagebox.showwarning(title="No Files Selected", message="No files selected! Please select file(s) or folder and then select compress and zip.")
                 return
-            if (destination == ''):
-                messagebox.showwarning(title="Missing Destination Folder", message="Select a destination file to continue")
+            if (destination == '' or not os.path.isdir(destination)):
+                messagebox.showwarning(title="Invalid Destination Directory", message="Select a valid destination directory to continue.")
                 return
             if quality < 0 or quality > 100:
                 messagebox.showwarning(title="Incorrect Quality Setting", message="Quality must be set between 0 to 100. Default is 25.")
+                return
+            if (outputName == ''):
+                messagebox.showwarning(title="Missing Output Name", message="Please provide an output name.")
                 return
             print("Output folder = " + destination)
             print("Compression Quality = " + str(compression_quality))
 
             # Compress files
-            filesToBeZipped = compressFiles(destination, compression_quality)
+            filesToBeZipped = compressFiles(destination, compression_quality, outputName)
 
             # Start zipping progress bar and label
             zip_label = ttk.Label(self, text="Files being zipped")
@@ -117,7 +121,7 @@ class FileSelectionPage(tk.Frame):
 
             # Zip files
             for i in range(len(fileList)):
-                with ZipFile(destination + '/compressedImages_' + str(i) + '.zip','w') as zip:
+                with ZipFile(destination + '/' + outputName + ' (' + str(i) + ').zip','w') as zip:
                         # writing each file one by one
                         for file in fileList[i]:
                             zip.write(file, os.path.basename(file))
@@ -137,7 +141,7 @@ class FileSelectionPage(tk.Frame):
             print("Compression and zipping Complete!")
             return
 
-        def compressFiles(destination, qual):
+        def compressFiles(destination, qual, fileName):
             compressedFiles = []
             count = 0
             progress = 0
@@ -153,14 +157,14 @@ class FileSelectionPage(tk.Frame):
                 if os.path.splitext(img)[1].lower() in self.controller.formats:
                     print('compressing', img)
                     picture = PIL.Image.open(img)
-                    path = destination + "/Compressed_"+ str(count) + ".jpg"
+                    path = destination + '/' + fileName + ' (' + str(count) + ').jpg'
                     picture.save(path, "JPEG", optimize = True, quality = qual)
                     compressedFiles.append(path)
                     count = count + 1
                 else:
                     #TODO: Find better way to handle other file types (ex. mov)
                     print('skipping ', img)
-                    path = destination + "/Compressed_"+ str(count) + os.path.splitext(img)[1].lower()
+                    path = destination + '/' + fileName + ' (' + str(count) + ')' + os.path.splitext(img)[1].lower()
                     compressedFiles.append(path)
                     shutil.copy(img, path)
                     count = count + 1
@@ -241,6 +245,7 @@ class FileSelectionPage(tk.Frame):
         quality_var = IntVar(self, value="25")
         progressVar = DoubleVar()
         destination_var = StringVar(self, value="")
+        outputNamingVar = StringVar(self, value="compressedImages")
 
         # Frames
         manage_frame = ttk.Frame(self, borderwidth=5, relief="ridge")
@@ -258,14 +263,16 @@ class FileSelectionPage(tk.Frame):
         process_button = tk.Button(self, text="compress and zip", command=lambda: fileHandler(), font=helv36)
 
         # Entry
-        destination_entry = tk.Entry(entry_frame, textvariable=destination_var, state="readonly")
+        destination_entry = tk.Entry(entry_frame, textvariable=destination_var)
         quality_entry = tk.Entry(entry_frame, textvariable=quality_var, justify="center")
+        output_naming_entry = tk.Entry(entry_frame, textvariable=outputNamingVar, justify="center")
 
         # Labels
         selected_label = ttk.Label(self, text="Selected files:")
         manage_label = ttk.Label(self, text="Manage files:")
         destination_label = ttk.Label(entry_frame, text="Destination:")
         quality_label = ttk.Label(entry_frame, text="Quality (0-100):")
+        output_naming_label = ttk.Label(entry_frame, text="Output name:")
 
         # Progress bar
         progress_bar = ttk.Progressbar(self, orient="horizontal", variable=progressVar, mode="determinate", maximum=100, value=0)
@@ -287,6 +294,8 @@ class FileSelectionPage(tk.Frame):
         destination_label.grid(row=0, column=0, padx=0, pady=0, sticky="w")
         destination_entry.grid(row=1, column=0, padx=0, pady=0, columnspan=2, sticky="ew")
         destination_button.grid(row=2, column=0, padx=0, pady=0, sticky="w")
+        output_naming_label.grid(row=3, column=0, padx=0, pady=0, sticky="w")
+        output_naming_entry.grid(row=3, column=1, padx=0, pady=0, sticky="w")
         quality_label.grid(row=4, column=0, padx=0, pady=(30,0), sticky="w")
         quality_entry.grid(row=4, column=1, padx=0, pady=(30,0))
 
