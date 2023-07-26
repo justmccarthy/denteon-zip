@@ -2,6 +2,7 @@ from zipfile import ZipFile
 import shutil
 # from PIL import Image
 import PIL.Image
+import PIL.ImageOps
 import os, getpass
 import tkinter as tk
 from tkinter import *
@@ -156,7 +157,9 @@ class FileSelectionPage(tk.Frame):
                 progress_bar.update_idletasks()
                 if os.path.splitext(img)[1].lower() in self.controller.formats:
                     print('compressing', img)
-                    picture = PIL.Image.open(img)
+                    image = PIL.Image.open(img)
+                    # Preserves images original rotation
+                    picture = PIL.ImageOps.exif_transpose(image)
                     path = destination + '/' + fileName + ' (' + str(count) + ').jpg'
                     picture.save(path, "JPEG", optimize = True, quality = qual)
                     compressedFiles.append(path)
